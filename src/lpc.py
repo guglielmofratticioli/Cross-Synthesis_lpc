@@ -114,7 +114,6 @@ def lpc(filename, filter_type='whitening'):
     plt.show()
     """
 
-
     autocorr = compute_autocorrelation(windowed_frames)
     
     lpc_coeffs = compute_lpc_coefficients(autocorr, lpc_order)
