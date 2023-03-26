@@ -30,10 +30,18 @@ def overlapp_add_frames(frames, R, window):
     return out
         
 def check_COLA(window, R) :
-    for i in range(window.size-R):
-        samples = window[i::R]
-        if sum(samples) > 1 : 
-            return False 
-    return True
+    sums = []
+    for n in range(window.size//2):
+        sum = 0
+        for m in range(-window.size//R//2, window.size//R//2):
+            sum += window[n+m*R]
+        sums.append(sum)
+    # Check if sums are constant
+    if np.allclose(sums,sums[0]):
+        return sums[0]
+    else :
+        return False 
 
-
+if __name__ == '__main__' : 
+    w = np.bartlett(100)
+    check_COLA(w,50)
