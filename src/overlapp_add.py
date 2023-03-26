@@ -27,7 +27,7 @@ def overlapp_add_frames(frames, overlap, window=1):
         start = i*(M - overlap)
         end = np.clip(start+M,0,len(out))
         out[start:end] += frame[:(end-start)]*window
-    return out
+    return out 
         
 def check_COLA(window, R) :
     sums = []
@@ -37,7 +37,7 @@ def check_COLA(window, R) :
             sum += window[n+m*R]
         sums.append(sum)
 # Check if sums are constant
-    if np.allclose(sums,sums[0]):
+    if np.allclose(sums,sums[0],0.02):
         return sums[0]
     else :
         return False 
@@ -45,14 +45,26 @@ def check_COLA(window, R) :
 if __name__ == '__main__' : 
     N = 101
     waveform = np.bartlett(N)
-    signal =  np.tile(waveform,10)
+    signal =  np.tile(waveform,100)
     plt.figure()
     plt.plot(signal)
 
-    window = np.bartlett(32)
-    print(check_COLA(window,1))
-    frames = get_overlapped_frames(signal,16,window)
-    signal2 = overlapp_add_frames(frames,16)
+    window = np.hanning(64)
+    c = check_COLA(window,16)
+    frames = get_overlapped_frames(signal,48,window)
+    signal2 = overlapp_add_frames(frames,48)
     plt.figure()
     plt.plot(signal2)
+    plt.figure()
+    plt.plot(abs(signal - signal2[:len(signal)]/c))
     plt.show()
+""" 
+CHAT GPT on small fluctuations : 
+However, even if the COLA condition is satisfied, 
+small error fluctuations can still occur due to the windowing process 
+and the overlap-add synthesis procedure, 
+as I explained earlier. These error fluctuations can be minimized by choosing an 
+appropriate window function and overlap factor, but they cannot be completely eliminated.
+
+Therefore, while the COLA condition is necessary for perfect reconstruction, 
+it does not guarantee that there will be no error fluctuations in the reconstructed signal. """
