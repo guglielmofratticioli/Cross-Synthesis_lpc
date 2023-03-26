@@ -2,6 +2,8 @@ import numpy as np
 import wave 
 import matplotlib.pyplot as plt
 import overlapp_add as ola
+import lpc as lpc
+
 
 # Open the WAV file
 wav_file = wave.open('res/speech.wav', 'r')
@@ -24,3 +26,4 @@ frames = ola.get_overlapped_frames(wav_samples,50,window)
 plt.plot(range(len(frames[0:1000])),frames[0:1000])
 
 plt.show()
+
