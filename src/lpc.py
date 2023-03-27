@@ -2,16 +2,19 @@ import numpy as np
 import scipy.io.wavfile as wavfile
 from scipy.signal import lfilter
 import matplotlib.pyplot as plt
+import scipy as sp
 
 frame_size = 1024
 overlap_factor = 0.5
 window_function = np.hamming
-lpc_order=10
+lpc_order=100
 
 def read_wav(filename):
     rate, data = wavfile.read(filename)
     if len(data.shape) > 1:
         data = data[:, 0]  # Use only one channel if stereo
+
+    #wavfile.write("prova.wav", rate, data.astype(np.int16))
     return rate, data
 
 def divide_into_frames(signal, frame_size, overlap_factor):
@@ -29,39 +32,31 @@ def compute_autocorrelation(frames):
     num_frames, frame_size = frames.shape
     autocorr = np.zeros((num_frames, frame_size))
     for i in range(num_frames):
-        autocorr[i] = np.correlate(frames[i], frames[i], mode='full')[frame_size - 1:]
+        #CALCULATE AUTOCORRELATION ARRAYS AND NORMALIZE
+        autocorr[i] = sp.signal.correlate(frames[i], frames[i], method="fft")[frame_size - 1:]
+    
     return autocorr
 
 def compute_lpc_coefficients(autocorr, order):
     num_frames = autocorr.shape[0]
-    lpc_coeffs = np.zeros((num_frames, order + 1))
+    lpc_coeffs = np.zeros((num_frames, order))
     
     for i in range(num_frames):
-        R = np.zeros((order + 1, order + 1))
-        r = np.zeros((order + 1,))
         
-        for j in range(order + 1):
-            R[j, : order + 1 - j] = autocorr[i, : order + 1 - j]
-            R[:, j] += autocorr[i, j]
-            r[j] = autocorr[i, j]
-        
+        R = sp.linalg.toeplitz(autocorr[i][0:order])
+        r = autocorr[i][1:order+1]
         lpc_coeffs[i] = np.linalg.solve(R, r)
     
     return lpc_coeffs
 
 def compute_whitening_filters(lpc_coeffs):
     num_frames, order = lpc_coeffs.shape
-    whitening_filters = np.zeros((num_frames, order))
+    #the whitening fiter is 1 coefficient longer than the wiener (1 - (wiener coeff))
+    whitening_filters = np.zeros((num_frames, order+1))
     for i in range(num_frames):
-        whitening_filters[i] = -lpc_coeffs[i, 1:] / lpc_coeffs[i, 0]
+        whitening_filters[i][0]=1
+        whitening_filters[i][1:] = -lpc_coeffs[i]
     return whitening_filters
-
-def compute_shaping_filters(lpc_coeffs):
-    num_frames, order = lpc_coeffs.shape
-    shaping_filters = np.zeros((num_frames, order))
-    for i in range(num_frames):
-        shaping_filters[i] = lpc_coeffs[i, 1:]
-    return shaping_filters
 
 def lpc(filename, filter_type='whitening'):
     rate, data = read_wav(filename)
@@ -76,7 +71,6 @@ def lpc(filename, filter_type='whitening'):
     plt.show()
     """
     
-
     frames = divide_into_frames(data, frame_size, overlap_factor)
     windowed_frames = apply_window(frames, window_function(frame_size))
 
@@ -119,24 +113,24 @@ def lpc(filename, filter_type='whitening'):
     
     lpc_coeffs = compute_lpc_coefficients(autocorr, lpc_order)
 
-    if filter_type == 'whitening':
-        filter_coeffs = compute_whitening_filters(lpc_coeffs)
-    elif filter_type == 'shaping':
-        filter_coeffs = compute_shaping_filters(lpc_coeffs)
-    else:
-        raise ValueError("Invalid filter type. Please choose 'whitening' or 'shaping'.")
+    whitening_filter_coeffs = compute_whitening_filters(lpc_coeffs)
+    
+    #plot sample frame and sample filter filter
+    frameNumber = 1000
+    plot_frame_and_filter(windowed_frames[frameNumber], whitening_filter_coeffs[frameNumber], filter_type, rate)
 
-    return rate, data, lpc_coeffs, filter_coeffs
+    return rate, data, lpc_coeffs, whitening_filter_coeffs
 
 def test(filename):
     #plot_window_and_cola(window_function, frame_size, overlap_factor)
     # COLA CONDITION OK WITH THESE PARAMETERS
 
-    # Compute LPC coefficients and whitening filter
-    rate, data, lpc_coeffs, whitening_filter = lpc(filename)
+    # Compute LPC coefficients and filter
+    rate, data, lpc_coeffs, filter_coeffs = lpc(filename, filter_type="shaping")
+
 
     # Apply whitening filter to original signal
-    filtered_signal = lfilter(np.concatenate(([1], whitening_filter[0][::-1])), [1], data)
+    filtered_signal = lfilter(np.concatenate(([1], filter_coeffs[0][::-1])), [1], data)
 
     # Write filtered signal to a new file
     wavfile.write('output.wav', rate, filtered_signal)
@@ -176,5 +170,36 @@ def plot_window_and_cola(window_function, frame_size, overlap_factor):
     
     plt.show()
 
+def plot_frame_and_filter(frame, filter, filter_type, sample_rate):
+    # Calculate the FFT of the frame and the shaping filter
+    frame_fft = np.fft.fft(frame)
+    filter_fft = np.fft.fft(filter, n=len(frame))
+
+    if(filter_type=="shaping"):
+        filter_fft = 1/filter_fft
+    
+    # Calculate the corresponding frequency values
+    freqs = np.fft.fftfreq(len(frame), 1/sample_rate)
+    
+    # Convert the results to the decibel scale
+    frame_db = 20 * np.log10(np.abs(frame_fft))
+    filter_db = 20 * np.log10(np.abs(filter_fft))
+    
+    # Plot the results
+    plt.figure(figsize=(12, 6))
+    plt.plot(freqs[:len(frame)//2], frame_db[:len(frame)//2], label='Frame FFT')
+    plt.plot(freqs[:len(frame)//2], filter_db[:len(frame)//2], label=f'{filter_type.capitalize()} Filter FFT', linestyle='--')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Magnitude (dB)')
+    plt.title('FFT of Frame and Shaping Filter')
+    plt.legend()
+    plt.show()
+
+
+
+
 if __name__ == '__main__' : 
    test('res/piano.wav')
+
+
+
