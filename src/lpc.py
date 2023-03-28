@@ -4,17 +4,16 @@ from scipy.signal import lfilter
 import matplotlib.pyplot as plt
 import scipy as sp
 
-frame_size = 1024
+frame_size = 1*1024
 overlap_factor = 0.5
-window_function = np.hamming
-lpc_order=100
+window_function = np.hanning
+lpc_order_piano=24
+lpc_order_voice=48
 
 def read_wav(filename):
     rate, data = wavfile.read(filename)
     if len(data.shape) > 1:
         data = data[:, 0]  # Use only one channel if stereo
-
-    #wavfile.write("prova.wav", rate, data.astype(np.int16))
     return rate, data
 
 def divide_into_frames(signal, frame_size, overlap_factor):
@@ -37,13 +36,21 @@ def compute_autocorrelation(frames):
     
     return autocorr
 
-def compute_lpc_coefficients(autocorr, order):
+def compute_lpc_coefficients(autocorr, type):
     num_frames = autocorr.shape[0]
+    if(type=="piano"): order = lpc_order_piano
+    if(type=="voice"): order = lpc_order_voice
+
+
     lpc_coeffs = np.zeros((num_frames, order))
     
     for i in range(num_frames):
         
         R = sp.linalg.toeplitz(autocorr[i][0:order])
+        # if(i==0): 
+        #     plt.imshow(R, 'Blues_r')
+        #     plt.colorbar()
+        #     plt.show()
         r = autocorr[i][1:order+1]
         lpc_coeffs[i] = np.linalg.solve(R, r)
     
@@ -58,83 +65,46 @@ def compute_whitening_filters(lpc_coeffs):
         whitening_filters[i][1:] = -lpc_coeffs[i]
     return whitening_filters
 
-def lpc(filename, filter_type='whitening'):
+def lpc(filename, soundType):
     rate, data = read_wav(filename)
-    
-    """
-    #PLOT ORIGINAL SIGNAL
-    plt.figure(figsize=(12, 6))
-    plt.plot(data)
-    plt.title('Original Signal')
-    plt.xlabel('Samples')
-    plt.ylabel('Amplitude')
-    plt.show()
-    """
-    
     frames = divide_into_frames(data, frame_size, overlap_factor)
-    windowed_frames = apply_window(frames, window_function(frame_size))
-
-
-
-    """
-    #WINDOWING CHECK: OK
-    signal_length = len(data)
-    step_size = int(frame_size * (1 - overlap_factor))
-    num_steps = (signal_length - frame_size) // step_size + 1
-    
-    shifted_window = np.zeros((signal_length))
-    cola_sum = np.zeros_like(shifted_window)
-
-    
-    for i in range(num_steps):
-        shifted_window[i * step_size : i * step_size + frame_size] = windowed_frames[i]
-        cola_sum += shifted_window
-        shifted_window = np.zeros((signal_length))
-
-    plt.figure(figsize=(12, 6))
-    
-    plt.subplot(1, 2, 1)
-    plt.plot(np.zeros(frame_size))
-    plt.title('Window Function')
-    plt.xlabel('Samples')
-    plt.ylabel('Amplitude')
-    
-    plt.subplot(1, 2, 2)
-    plt.plot(cola_sum)
-    plt.title('Sum of Superposed Windows (COLA)')
-    plt.xlabel('Samples')
-    plt.ylabel('Amplitude')
-    
-    plt.show()
-    """
-
-
+    windowed_frames = frames * window_function(frame_size)
     autocorr = compute_autocorrelation(windowed_frames)
-    
-    lpc_coeffs = compute_lpc_coefficients(autocorr, lpc_order)
-
+    lpc_coeffs = compute_lpc_coefficients(autocorr, soundType)
     whitening_filter_coeffs = compute_whitening_filters(lpc_coeffs)
-    
-    #plot sample frame and sample filter filter
-    frameNumber = 1000
-    plot_frame_and_filter(windowed_frames[frameNumber], whitening_filter_coeffs[frameNumber], filter_type, rate)
+    # plot sample frame and sample filter
+    # frameNumber = 1000
+    # plot_frame_and_filter(windowed_frames[frameNumber], whitening_filter_coeffs[frameNumber], "shaping", rate)
+    return rate, data, lpc_coeffs, whitening_filter_coeffs, windowed_frames
 
-    return rate, data, lpc_coeffs, whitening_filter_coeffs
-
-def test(filename):
-    #plot_window_and_cola(window_function, frame_size, overlap_factor)
+def test():
+    # plot_window_and_cola(window_function, frame_size, overlap_factor)
     # COLA CONDITION OK WITH THESE PARAMETERS
-
-    # Compute LPC coefficients and filter
-    rate, data, lpc_coeffs, filter_coeffs = lpc(filename, filter_type="shaping")
-
-
-    # Apply whitening filter to original signal
-    filtered_signal = lfilter(np.concatenate(([1], filter_coeffs[0][::-1])), [1], data)
-
-    # Write filtered signal to a new file
-    wavfile.write('output.wav', rate, filtered_signal)
     
+    # Compute LPC coefficients and whitening filter
+    rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano = lpc('res/piano.wav', "piano")
+
+    rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech = lpc('res/speech.wav', "voice")
+
+    # Compute cross synthesis
+    filtered_signal = crossSynth(frames_piano, filter_coeffs_piano, filter_coeffs_speech, data_piano, frames_piano)
+    
+    # Write filtered signal to a new file
+    wavfile.write('output.wav', rate_piano, filtered_signal.astype(np.int16))
+    
+
+def crossSynth(harmonic_signal_framed, harmonic_whitening_framed, formant_whitening_framed, original_signal, original_signal_framed):
+    step_size = int(frame_size * (1 - overlap_factor))
+    #zero padding factor
+    zp = 4
+    result = np.zeros(len(original_signal)+zp*frame_size)
+    for i in range(harmonic_signal_framed.shape[0]):
+        frame_fft = np.fft.fft(harmonic_signal_framed[i], n=zp*frame_size)
+        harmonic_whitening_fft = np.fft.fft(harmonic_whitening_framed[i], n=zp*frame_size)
+        formant_whitening_fft = np.fft.fft(formant_whitening_framed[i], n=zp*frame_size)
+        result[(i*step_size) : i*step_size+(zp*frame_size)] += np.fft.ifft(frame_fft*harmonic_whitening_fft/formant_whitening_fft).real
+    return result
+
 
 
 def plot_window_and_cola(window_function, frame_size, overlap_factor):
@@ -199,7 +169,7 @@ def plot_frame_and_filter(frame, filter, filter_type, sample_rate):
 
 
 if __name__ == '__main__' : 
-   test('res/piano.wav')
+   test()
 
 
 
