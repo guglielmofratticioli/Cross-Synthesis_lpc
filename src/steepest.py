@@ -1,6 +1,7 @@
 import wave
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy as sp
 
 overlap_factor = 0.5
 frame_size = 1024
@@ -27,7 +28,19 @@ def divide_into_frames(signal, frame_size, overlap_factor):
 def apply_window(frames, window_function):
     return frames * window_function
 
-def compute_correlation(x,y,p_order): 
+def normalize(x):
+    x_mean = np.mean(x)
+    x_std = np.std(x)
+    x_norm = (x - x_mean) / x_std
+    return x_norm
+
+def compute_autocorrelation(x,y):
+    autocorr = sp.signal.correlate(x, y, method="fft")[frame_size - 1:]
+    R = sp.linalg.toeplitz(autocorr[0:p_order])
+    r = autocorr[1:p_order+1]
+    return r , R
+
+def compute_correlation(x,y): 
     r = np.correlate(x,y,'full')
     var = np.var(x)
     N = len(x)
@@ -37,20 +50,22 @@ def compute_correlation(x,y,p_order):
     return  r[:p_order] , R[:p_order,:p_order]
 
 def rec_find_weights(w,r,R,frame,mu,iter) : 
-    grad = R@w -r
-    w -= mu*grad
-    iter +=1
-    if iter > 100: 
+    if iter > 10: 
         return w
     else : 
+        iter +=1
+        grad = R@w - r
+        w -= mu*grad
         return rec_find_weights(w,r,R,frame,mu,iter)
 
 def steepest(frames , init) : 
     for idx,frame in enumerate(frames): 
-        mu = 0.02
-        r, R = compute_correlation(frame,frame,p_order)
-        R_norm = np.max(np.abs(R))  # normalization factor
-        R /= R_norm  # normalize R
+        mu = 0.001
+        #frame = frame/32767.0
+        r, R = compute_autocorrelation(frame,frame)
+        plt.imshow(R,'Blues_r')
+        plt.colorbar()
+        plt.show()
         w = rec_find_weights(init,r,R,frame,mu,0)
         w_whitening = np.zeros(len(w)+1)
         w_whitening[0] = 1
