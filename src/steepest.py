@@ -50,7 +50,7 @@ def compute_correlation(x,y):
     return  r[:p_order] , R[:p_order,:p_order]
 
 def rec_find_weights(w,r,R,frame,mu,iter) : 
-    if iter > 10: 
+    if iter > 100: 
         return w
     else : 
         iter +=1
@@ -61,11 +61,15 @@ def rec_find_weights(w,r,R,frame,mu,iter) :
 def steepest(frames , init) : 
     for idx,frame in enumerate(frames): 
         mu = 0.001
-        #frame = frame/32767.0
+        frame = frame.astype(float) / np.abs(frame).max()
         r, R = compute_autocorrelation(frame,frame)
-        plt.imshow(R,'Blues_r')
-        plt.colorbar()
-        plt.show()
+        R = R / np.abs(R).max()
+        r = r / np.abs(r).max()
+        
+        # plt.clf()
+        # plt.imshow(R,'Blues_r')
+        # plt.colorbar()
+        # plt.show()
         w = rec_find_weights(init,r,R,frame,mu,0)
         w_whitening = np.zeros(len(w)+1)
         w_whitening[0] = 1
@@ -73,6 +77,7 @@ def steepest(frames , init) :
 
         W = np.fft.fft(w_whitening)
         Wf = np.fft.fftfreq(len(W))[:len(W)//2]
+
         plt.clf()
         plt.semilogx( Wf ,2.0/len(W) * np.abs(W[:len(W)//2]) )
         #plt.plot(Wf,2.0/len(W) * np.abs(W[:len(W)//2]))
