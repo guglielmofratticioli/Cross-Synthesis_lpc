@@ -41,7 +41,6 @@ def compute_lpc_coefficients(autocorr, type):
     if(type=="piano"): order = lpc_order_piano
     if(type=="voice"): order = lpc_order_voice
 
-
     lpc_coeffs = np.zeros((num_frames, order))
     
     for i in range(num_frames):
@@ -51,10 +50,42 @@ def compute_lpc_coefficients(autocorr, type):
         #     plt.imshow(R, 'Blues_r')
         #     plt.colorbar()
         #     plt.show()
-        r = autocorr[i][1:order+1]
+
         lpc_coeffs[i] = np.linalg.solve(R, r)
     
     return lpc_coeffs
+
+def compute_steepest_coefficents(autocorr , init) : 
+    num_frames = autocorr.shape[0]
+    if(type=="piano"): order = lpc_order_piano
+    if(type=="voice"): order = lpc_order_voice
+
+    steep_coeffs = np.zeros((num_frames, order))
+
+    for i in range(num_frames):
+        mu = 0.001
+        frame = frame.astype(float) / np.abs(frame).max()
+        R = sp.linalg.toeplitz(autocorr[i][0:order])
+        r = autocorr[i][1:order+1]
+        R = R / np.abs(R).max()
+        r = r / np.abs(r).max()
+        
+        # plt.clf()
+        # plt.imshow(R,'Blues_r')
+        # plt.colorbar()
+        # plt.show()
+        w = rec_find_weights(init,r,R,frame,mu,0)
+        w_whitening = np.zeros(len(w)+1)
+        w_whitening[0] = 1
+        w_whitening[1:] = -w
+
+        W = np.fft.fft(w_whitening)
+        Wf = np.fft.fftfreq(len(W))[:len(W)//2]
+
+        plt.clf()
+        plt.semilogx( Wf ,2.0/len(W) * np.abs(W[:len(W)//2]) )
+        #plt.plot(Wf,2.0/len(W) * np.abs(W[:len(W)//2]))
+        plt.show()
 
 def compute_whitening_filters(lpc_coeffs):
     num_frames, order = lpc_coeffs.shape
