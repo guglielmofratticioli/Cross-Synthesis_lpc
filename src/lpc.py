@@ -10,7 +10,9 @@ overlap_factor = 0.5
 window_function = np.hanning
 lpc_order_piano=24
 lpc_order_voice=48
-max_iter = 1000
+algorythm = 'steepest_descent'
+max_iter = 10000
+epsilon = 10**-8
 
 
 def read_wav(filename):
@@ -30,38 +32,20 @@ def divide_into_frames(signal, frame_size, overlap_factor):
 def compute_closed_coefficents(frame, R, r):
     return np.linalg.solve(R, r)
 
-def rec_find_weights(sigma ,w ,r ,R ,mu ,iter) : 
-    if iter > max_iter: 
-        return w
-    else : 
-        iter +=1
+def compute_steepest_coefficents(frame ,R ,r) : 
+    sigma = np.mean(np.sum(np.square(frame)))
+    w = np.zeros(len(r))
+    eigs = sp.linalg.eigvals(R)
+    mu = 0.2*2/abs(max(eigs))
+    J = sigma - np.dot(np.conj(w),r) - np.dot(np.conj(r),w) + np.dot(np.conj(w),np.dot(R,w))
+    delta_J = J
+    while(delta_J > epsilon / mu ) : 
         grad = R@w - r
         w = w - mu*grad
-        return rec_find_weights(w,r,R,mu,iter)
-
-def compute_steepest_coefficents(frame ,R ,r) : 
-    num_frames = autocorr.shape[0]
-    if(type=="piano"): order = lpc_order_piano
-    if(type=="voice"): order = lpc_order_voice
-
-    steep_coeffs = np.zeros((num_frames, order))
-    init = np.zeros(order)
-    for i in range(num_frames):
-
-        R = sp.linalg.toeplitz(autocorr[i][0:order])
-        r = autocorr[i][1:order+1]
-        R = R / np.abs(R).max()
-        r = r / np.abs(r).max()
-
-        eigs = sp.linalg.eigvals(R)
-        mu = 0.05
-
-        w = np.zeros(order)
-        w = rec_find_weights(w,r,R,mu,0)
-
-        steep_coeffs[i] = w
-        print(i)
-    return steep_coeffs
+        J_prev = J
+        J = sigma - np.dot(np.conj(w),r) - np.dot(np.conj(r),w) + np.dot(np.conj(w),np.dot(R,w))
+        delta_J = J_prev - J
+    return w
 
 def compute_whitening_filters(lpc_coeffs):
     p_order = len(lpc_coeffs)
@@ -88,7 +72,8 @@ def lpc(filename, soundType, algorythm):
     frames = divide_into_frames(data, frame_size, overlap_factor)
     windowed_frames = frames * window_function(frame_size)
     whitening_filter_coeffs = np.zeros( [len(frames) , p_order+1])
-    for i , frame in enumerate(frames) : 
+    for i , frame in enumerate(windowed_frames) : 
+        if(i % 100 == 0) : print(i)
         R , r = correlate(frame,frame,p_order)
         if algorythm =='steepest_descent': 
             lpc_coeffs = compute_steepest_coefficents(frame, R ,r )
@@ -106,9 +91,9 @@ def test():
     # COLA CONDITION OK WITH THESE PARAMETERS
     
     # Compute LPC coefficients and whitening filter
-    rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano = lpc('res/piano.wav', "piano", 'closed_form')
+    rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano = lpc('res/piano.wav', "piano", algorythm)
 
-    rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech = lpc('res/speech.wav', "voice", 'closed_form')
+    rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech = lpc('res/speech.wav', "voice", algorythm)
 
     # Compute cross synthesis
     filtered_signal = crossSynth(frames_piano, filter_coeffs_piano, filter_coeffs_speech, data_piano, frames_piano)
@@ -190,9 +175,8 @@ def plot_frame_and_filter(frame, filter, filter_type, sample_rate):
 
 
 
-
 if __name__ == '__main__' : 
-   sys.setrecursionlimit(10000)
+   sys.setrecursionlimit(100000)
    test()
 
 
