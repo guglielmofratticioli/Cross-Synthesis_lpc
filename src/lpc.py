@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 import scipy.io.wavfile as wavfile
 from scipy.signal import lfilter
 import matplotlib.pyplot as plt
@@ -9,6 +10,8 @@ overlap_factor = 0.5
 window_function = np.hanning
 lpc_order_piano=24
 lpc_order_voice=48
+max_iter = 1000
+
 
 def read_wav(filename):
     rate, data = wavfile.read(filename)
@@ -23,10 +26,10 @@ def divide_into_frames(signal, frame_size, overlap_factor):
     for i in range(num_frames):
         frames[i, :] = signal[i * step_size : i * step_size + frame_size]
     return frames
-
+# delete
 def apply_window(frames, window_function):
     return frames * window_function
-
+# delete
 def compute_autocorrelation(frames):
     num_frames, frame_size = frames.shape
     autocorr = np.zeros((num_frames, frame_size))
@@ -36,76 +39,80 @@ def compute_autocorrelation(frames):
     
     return autocorr
 
-def compute_lpc_coefficients(autocorr, type):
-    num_frames = autocorr.shape[0]
-    if(type=="piano"): order = lpc_order_piano
-    if(type=="voice"): order = lpc_order_voice
+def compute_closed_coefficents(frame, R, r):
+    return np.linalg.solve(R, r)
 
-    lpc_coeffs = np.zeros((num_frames, order))
-    
-    for i in range(num_frames):
-        
-        R = sp.linalg.toeplitz(autocorr[i][0:order])
-        # if(i==0): 
-        #     plt.imshow(R, 'Blues_r')
-        #     plt.colorbar()
-        #     plt.show()
+def rec_find_weights(sigma ,w ,r ,R ,mu ,iter) : 
+    if iter > max_iter: 
+        return w
+    else : 
+        iter +=1
+        grad = R@w - r
+        w = w - mu*grad
+        return rec_find_weights(w,r,R,mu,iter)
 
-        lpc_coeffs[i] = np.linalg.solve(R, r)
-    
-    return lpc_coeffs
-
-def compute_steepest_coefficents(autocorr , init) : 
+def compute_steepest_coefficents(frame ,R ,r) : 
     num_frames = autocorr.shape[0]
     if(type=="piano"): order = lpc_order_piano
     if(type=="voice"): order = lpc_order_voice
 
     steep_coeffs = np.zeros((num_frames, order))
-
+    init = np.zeros(order)
     for i in range(num_frames):
-        mu = 0.001
-        frame = frame.astype(float) / np.abs(frame).max()
+
         R = sp.linalg.toeplitz(autocorr[i][0:order])
         r = autocorr[i][1:order+1]
         R = R / np.abs(R).max()
         r = r / np.abs(r).max()
-        
-        # plt.clf()
-        # plt.imshow(R,'Blues_r')
-        # plt.colorbar()
-        # plt.show()
-        w = rec_find_weights(init,r,R,frame,mu,0)
-        w_whitening = np.zeros(len(w)+1)
-        w_whitening[0] = 1
-        w_whitening[1:] = -w
 
-        W = np.fft.fft(w_whitening)
-        Wf = np.fft.fftfreq(len(W))[:len(W)//2]
+        eigs = sp.linalg.eigvals(R)
+        mu = 0.05
 
-        plt.clf()
-        plt.semilogx( Wf ,2.0/len(W) * np.abs(W[:len(W)//2]) )
-        #plt.plot(Wf,2.0/len(W) * np.abs(W[:len(W)//2]))
-        plt.show()
+        w = np.zeros(order)
+        w = rec_find_weights(w,r,R,mu,0)
+
+        steep_coeffs[i] = w
+        print(i)
+    return steep_coeffs
 
 def compute_whitening_filters(lpc_coeffs):
-    num_frames, order = lpc_coeffs.shape
+    p_order = len(lpc_coeffs)
     #the whitening fiter is 1 coefficient longer than the wiener (1 - (wiener coeff))
-    whitening_filters = np.zeros((num_frames, order+1))
-    for i in range(num_frames):
-        whitening_filters[i][0]=1
-        whitening_filters[i][1:] = -lpc_coeffs[i]
+    whitening_filters = np.zeros(p_order+1)
+    whitening_filters[0]=1
+    whitening_filters[1:] = -lpc_coeffs
+
     return whitening_filters
 
-def lpc(filename, soundType):
+def correlate(x,y,p_order):
+    autocorr = sp.signal.correlate(x, y, method="fft")[frame_size - 1:]
+    R = sp.linalg.toeplitz(autocorr[0:p_order])
+    r = autocorr[1:p_order+1]
+    R = R / np.abs(R).max()
+    r = r / np.abs(r).max()
+    return R , r
+
+def lpc(filename, soundType, algorythm):
+    if soundType == 'piano' : 
+        p_order = lpc_order_piano
+    elif soundType == 'voice' : 
+        p_order = lpc_order_voice
+
     rate, data = read_wav(filename)
     frames = divide_into_frames(data, frame_size, overlap_factor)
     windowed_frames = frames * window_function(frame_size)
-    autocorr = compute_autocorrelation(windowed_frames)
-    lpc_coeffs = compute_lpc_coefficients(autocorr, soundType)
-    whitening_filter_coeffs = compute_whitening_filters(lpc_coeffs)
-    # plot sample frame and sample filter
-    # frameNumber = 1000
-    # plot_frame_and_filter(windowed_frames[frameNumber], whitening_filter_coeffs[frameNumber], "shaping", rate)
+    whitening_filter_coeffs = np.zeros( [len(frames) , p_order+1])
+    for i , frame in enumerate(frames) : 
+        R , r = correlate(frame,frame,p_order)
+        if algorythm =='steepest_descent': 
+            lpc_coeffs = compute_steepest_coefficents(frame, R ,r )
+        elif algorythm =='closed_form':
+            lpc_coeffs = compute_closed_coefficents(frame, R ,r )
+        else : 
+            raise(ValueError(algorythm + ' is an invalid algorythm '))
+        
+        whitening_filter_coeffs[i] = compute_whitening_filters(lpc_coeffs)
+
     return rate, data, lpc_coeffs, whitening_filter_coeffs, windowed_frames
 
 def test():
@@ -113,9 +120,9 @@ def test():
     # COLA CONDITION OK WITH THESE PARAMETERS
     
     # Compute LPC coefficients and whitening filter
-    rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano = lpc('res/piano.wav', "piano")
+    rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano = lpc('res/piano.wav', "piano", 'closed_form')
 
-    rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech = lpc('res/speech.wav', "voice")
+    rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech = lpc('res/speech.wav', "voice", 'closed_form')
 
     # Compute cross synthesis
     filtered_signal = crossSynth(frames_piano, filter_coeffs_piano, filter_coeffs_speech, data_piano, frames_piano)
@@ -135,7 +142,6 @@ def crossSynth(harmonic_signal_framed, harmonic_whitening_framed, formant_whiten
         formant_whitening_fft = np.fft.fft(formant_whitening_framed[i], n=zp*frame_size)
         result[(i*step_size) : i*step_size+(zp*frame_size)] += np.fft.ifft(frame_fft*harmonic_whitening_fft/formant_whitening_fft).real
     return result
-
 
 
 def plot_window_and_cola(window_function, frame_size, overlap_factor):
@@ -200,6 +206,7 @@ def plot_frame_and_filter(frame, filter, filter_type, sample_rate):
 
 
 if __name__ == '__main__' : 
+   sys.setrecursionlimit(10000)
    test()
 
 
