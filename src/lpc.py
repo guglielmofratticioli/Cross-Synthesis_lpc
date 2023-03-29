@@ -47,14 +47,14 @@ def compute_steepest_coefficents(frame ,R ,r) :
         delta_J = J_prev - J
     return w
 
-def compute_whitening_filters(lpc_coeffs):
+def compute_whitening_filter(lpc_coeffs):
     p_order = len(lpc_coeffs)
     #the whitening fiter is 1 coefficient longer than the wiener (1 - (wiener coeff))
-    whitening_filters = np.zeros(p_order+1)
-    whitening_filters[0]=1
-    whitening_filters[1:] = -lpc_coeffs
+    whitening_filter = np.zeros(p_order+1)
+    whitening_filter[0]=1
+    whitening_filter[1:] = -lpc_coeffs
 
-    return whitening_filters
+    return whitening_filter
 
 def correlate(x,y,p_order):
     autocorr = sp.signal.correlate(x, y, method="fft")[frame_size - 1:]
@@ -82,7 +82,7 @@ def lpc(filename, soundType, algorythm):
         else : 
             raise(ValueError(algorythm + ' is an invalid algorythm '))
         
-        whitening_filter_coeffs[i] = compute_whitening_filters(lpc_coeffs)
+        whitening_filter_coeffs[i] = compute_whitening_filter(lpc_coeffs)
 
     return rate, data, lpc_coeffs, whitening_filter_coeffs, windowed_frames
 
