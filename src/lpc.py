@@ -36,12 +36,12 @@ def compute_steepest_coefficents(frame ,R ,r) :
     sigma = np.mean(np.sum(np.square(frame)))
     w = np.zeros(len(r))
     eigs = sp.linalg.eigvals(R)
-    mu = 0.2*2/abs(max(eigs))
+    mu = 0.99*2/abs(max(eigs))
     J = sigma - np.dot(np.conj(w),r) - np.dot(np.conj(r),w) + np.dot(np.conj(w),np.dot(R,w))
     delta_J = J
     while(delta_J > epsilon / mu ) : 
-        grad = R@w - r
-        w = w - mu*grad
+        grad = r - R@w 
+        w = w + mu*grad
         J_prev = J
         J = sigma - np.dot(np.conj(w),r) - np.dot(np.conj(r),w) + np.dot(np.conj(w),np.dot(R,w))
         delta_J = J_prev - J
@@ -93,6 +93,7 @@ def test():
     # Compute LPC coefficients and whitening filter
     rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano = lpc('res/piano.wav', "piano", algorythm)
     rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech = lpc('res/speech.wav', "voice", algorythm)
+    
 
     # Compute cross synthesis
     filtered_signal = crossSynth(frames_piano, filter_coeffs_piano, filter_coeffs_speech, data_piano, frames_piano)
