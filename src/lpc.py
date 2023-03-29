@@ -12,7 +12,7 @@ lpc_order_piano=24
 lpc_order_voice=48
 algorythm = 'steepest_descent'
 max_iter = 10000
-epsilon = 10**-8
+epsilon = 10**-6
 
 
 def read_wav(filename):
@@ -92,7 +92,6 @@ def test():
     
     # Compute LPC coefficients and whitening filter
     rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano = lpc('res/piano.wav', "piano", algorythm)
-
     rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech = lpc('res/speech.wav', "voice", algorythm)
 
     # Compute cross synthesis
@@ -100,7 +99,8 @@ def test():
     
     # Write filtered signal to a new file
     wavfile.write('output.wav', rate_piano, filtered_signal.astype(np.int16))
-    
+    plt.plot(filtered_signal/abs(max(filtered_signal)))
+    plt.show()
 
 def crossSynth(harmonic_signal_framed, harmonic_whitening_framed, formant_whitening_framed, original_signal, original_signal_framed):
     step_size = int(frame_size * (1 - overlap_factor))
