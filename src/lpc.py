@@ -26,18 +26,6 @@ def divide_into_frames(signal, frame_size, overlap_factor):
     for i in range(num_frames):
         frames[i, :] = signal[i * step_size : i * step_size + frame_size]
     return frames
-# delete
-def apply_window(frames, window_function):
-    return frames * window_function
-# delete
-def compute_autocorrelation(frames):
-    num_frames, frame_size = frames.shape
-    autocorr = np.zeros((num_frames, frame_size))
-    for i in range(num_frames):
-        #CALCULATE AUTOCORRELATION ARRAYS AND NORMALIZE
-        autocorr[i] = sp.signal.correlate(frames[i], frames[i], method="fft")[frame_size - 1:]
-    
-    return autocorr
 
 def compute_closed_coefficents(frame, R, r):
     return np.linalg.solve(R, r)
@@ -88,8 +76,6 @@ def correlate(x,y,p_order):
     autocorr = sp.signal.correlate(x, y, method="fft")[frame_size - 1:]
     R = sp.linalg.toeplitz(autocorr[0:p_order])
     r = autocorr[1:p_order+1]
-    R = R / np.abs(R).max()
-    r = r / np.abs(r).max()
     return R , r
 
 def lpc(filename, soundType, algorythm):
