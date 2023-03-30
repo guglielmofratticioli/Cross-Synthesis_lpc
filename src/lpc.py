@@ -10,8 +10,7 @@ overlap_factor = 0.5
 window_function = np.hanning
 lpc_order_piano=24
 lpc_order_voice=48
-algorythm = 'steepest_descent'
-max_iter = 10000
+algorithm = 'steepest_descent'
 epsilon = 10**-6
 
 
@@ -19,6 +18,7 @@ def read_wav(filename):
     rate, data = wavfile.read(filename)
     if len(data.shape) > 1:
         data = data[:, 0]  # Use only one channel if stereo
+    data = data/max(abs(data))
     return rate, data
 
 def divide_into_frames(signal, frame_size, overlap_factor):
@@ -32,20 +32,20 @@ def divide_into_frames(signal, frame_size, overlap_factor):
 def compute_closed_coefficents(frame, R, r):
     return np.linalg.solve(R, r)
 
-def compute_steepest_coefficents(frame ,R ,r) : 
+def compute_steepest_coefficents(frame ,R ,r, mu) : 
     sigma = np.mean(np.sum(np.square(frame)))
     w = np.zeros(len(r))
     eigs = sp.linalg.eigvals(R)
-    mu = 0.99*2/abs(max(eigs))
+    dw = mu*2/abs(max(eigs))    
     J = sigma - np.dot(np.conj(w),r) - np.dot(np.conj(r),w) + np.dot(np.conj(w),np.dot(R,w))
     delta_J = J
     while(delta_J > epsilon / mu ) : 
-        grad = r - R@w 
-        w = w + mu*grad
+        grad = r - np.dot(R,w) 
+        w = w + dw*grad
         J_prev = J
         J = sigma - np.dot(np.conj(w),r) - np.dot(np.conj(r),w) + np.dot(np.conj(w),np.dot(R,w))
         delta_J = J_prev - J
-    return w
+    return w , J
 
 def compute_whitening_filter(lpc_coeffs):
     p_order = len(lpc_coeffs)
@@ -56,13 +56,31 @@ def compute_whitening_filter(lpc_coeffs):
 
     return whitening_filter
 
-def correlate(x,y,p_order):
-    autocorr = sp.signal.correlate(x, y, method="fft")[frame_size - 1:]
+""" def correlate(x,y,p_order):
+    autocorr = np.correlate(x, y, mode="full")[frame_size - 1:]
+    autocorr /= np.max(autocorr)
     R = sp.linalg.toeplitz(autocorr[0:p_order])
     r = autocorr[1:p_order+1]
-    return R , r
+    return R , r 
+ """
 
-def lpc(filename, soundType, algorythm):
+def correlate(x, y, p_order):
+    # Compute the autocorrelation
+    autocorr = np.correlate(x, y, mode="full")[len(x) - 1:]
+    #autocorr /= np.max(autocorr)
+
+    # Compute the correlation matrix R and vector r
+    R = np.zeros((p_order, p_order))
+    r = np.zeros(p_order)
+    for i in range(p_order):
+        for j in range(p_order):
+            R[i,j] = autocorr[np.abs(i-j)]
+        r[i] = autocorr[i+1]
+
+    return R, r
+
+
+def lpc(filename, soundType, algorythm, mu = 0.5):
     if soundType == 'piano' : 
         p_order = lpc_order_piano
     elif soundType == 'voice' : 
@@ -72,17 +90,25 @@ def lpc(filename, soundType, algorythm):
     frames = divide_into_frames(data, frame_size, overlap_factor)
     windowed_frames = frames * window_function(frame_size)
     whitening_filter_coeffs = np.zeros( [len(frames) , p_order+1])
+    J_list = np.zeros(len(frames))
     for i , frame in enumerate(windowed_frames) : 
         if(i % 100 == 0) : print(i)
         R , r = correlate(frame,frame,p_order)
-        if algorythm =='steepest_descent': 
-            lpc_coeffs = compute_steepest_coefficents(frame, R ,r )
-        elif algorythm =='closed_form':
+        if algorithm =='steepest_descent': 
+            lpc_coeffs, J = compute_steepest_coefficents(frame, R ,r , mu)
+        elif algorithm =='closed_form':
             lpc_coeffs = compute_closed_coefficents(frame, R ,r )
         else : 
-            raise(ValueError(algorythm + ' is an invalid algorythm '))
+            raise(ValueError(algorythm + ' is an invalid algorithm '))
         
         whitening_filter_coeffs[i] = compute_whitening_filter(lpc_coeffs)
+        J_list[i] = J
+    # CONVERGENCE ANALYSIS
+    # if algorithm == 'steepest_descent' : 
+    #     # J_min = min(J)
+    #     # J_avg = np.mean(J)
+
+
 
     return rate, data, lpc_coeffs, whitening_filter_coeffs, windowed_frames
 
@@ -91,13 +117,13 @@ def test():
     # COLA CONDITION OK WITH THESE PARAMETERS
     
     # Compute LPC coefficients and whitening filter
-    rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano = lpc('res/piano.wav', "piano", algorythm)
-    rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech = lpc('res/speech.wav', "voice", algorythm)
+    rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano = lpc('res/piano.wav', "piano", algorithm)
+    rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech = lpc('res/speech.wav', "voice", algorithm)
     
 
     # Compute cross synthesis
     filtered_signal = crossSynth(frames_piano, filter_coeffs_piano, filter_coeffs_speech, data_piano, frames_piano)
-    
+    filtered_signal *= 2**15 - 1
     # Write filtered signal to a new file
     wavfile.write('output.wav', rate_piano, filtered_signal.astype(np.int16))
     plt.plot(filtered_signal/abs(max(filtered_signal)))
