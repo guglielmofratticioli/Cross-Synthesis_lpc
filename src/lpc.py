@@ -249,6 +249,13 @@ def plot_analysis(Javg,times,param,type,lambda_factor) :
     plt.ylabel(' Error average over frames')
     plt.title('Error performance, lamda factor = '+lambda_factor)
 
+    # Save the plot 
+    if type == 'mu' : 
+        plt.xlabel('mu / time (s)') 
+        plt.savefig('mu_plot.pdf', dpi = 300)
+    if type == 'eps' : 
+        plt.xlabel('eps / time (s)') 
+        plt.savefig('eps_plot.pdf', dpi = 300)
     # Show the plot
     plt.show()
 
