@@ -11,7 +11,6 @@ overlap_factor = 0.5
 window_function = np.hanning
 lpc_order_piano=24
 lpc_order_voice=48
-algorithm = 'steepest_descent'
 epsilon = 10**-6
 
 
@@ -73,7 +72,7 @@ def correlate(x, y, p_order):
     return R, r
 
 
-def lpc(filename, soundType, algorythm, mu = 0.5):
+def lpc(filename, soundType, algorithm, mu = 0.5):
     if soundType == 'piano' : 
         p_order = lpc_order_piano
     elif soundType == 'voice' : 
@@ -86,24 +85,26 @@ def lpc(filename, soundType, algorythm, mu = 0.5):
     J_list = np.zeros(len(frames))
     lmd_factors = np.zeros(len(frames))
     for i , frame in enumerate(windowed_frames) : 
-        if(i % 100 == 0) : print(i)
+        if(i % 10 == 0) : print(i)
         R , r = correlate(frame,frame,p_order)
         if algorithm =='steepest_descent': 
             lpc_coeffs, J , eigs = compute_steepest_coefficents(frame, R ,r , mu)
+            J_list[i] = J
             lmd_factors[i] = max(abs(eigs))/min(abs(eigs))
         elif algorithm =='closed_form':
             lpc_coeffs = compute_closed_coefficents(frame, R ,r )
         else : 
-            raise(ValueError(algorythm + ' is an invalid algorithm '))
+            raise(ValueError(algorithm + ' is an invalid algorithm '))
         
         whitening_filter_coeffs[i] = compute_whitening_filter(lpc_coeffs)
-        J_list[i] = J
+
 
     # average over frames 
     J_avg = 0
+    lmd_factor_avg = 0
     if algorithm == 'steepest_descent' : 
         J_avg = np.mean(abs(J_list))
-        lmd_factor_avg = np.mean(lmd_factors)
+    lmd_factor_avg = np.mean(lmd_factors)
 
     return rate, data, lpc_coeffs, whitening_filter_coeffs, windowed_frames, J_avg , lmd_factor_avg
 
@@ -193,7 +194,7 @@ def perform_lpc():
     # Write filtered signal to a new file
     wavfile.write('output.wav', rate_piano, filtered_signal.astype(np.int16))
 
-def steepest_descent_analysis() : 
+def steepest_descent_analysis() :  
 
     # Get the lambda factor 
     args = lpc('res/speech.wav','voice', 'closed_form')
@@ -201,10 +202,10 @@ def steepest_descent_analysis() :
 
     # Compute the theoretical average minimum error 
     global epsilon 
-    epsilon = 10**-9
+    epsilon = 10**-7
     args  = lpc('res/speech.wav', "voice", 'steepest_descent')
     Jmin = args[5]
-
+    epsilon = 10**-5
     # Results by varing mu_values 
     mu_values = [0.1,0.25,0.5,0.75,0.9]
     Javg_mu = np.zeros(len(mu_values))
@@ -217,10 +218,11 @@ def steepest_descent_analysis() :
 
         Javg = args[5]
         Javg_mu[i] = Javg
+        Javg_mu /= Jmin
     plot_analysis(Javg_mu,Times_mu,mu_values,'mu',lambda_factor)
 
     # Results by varing epsilon 
-    eps_values = [10**-2,10**-4,10**-6,10**-8]
+    eps_values = [10**-2,10**-4,10**-5,10**-6]
     Javg_eps = np.zeros(len(eps_values))
     Times_eps = np.zeros(len(eps_values))
     for i,eps in enumerate(eps_values): 
@@ -229,8 +231,10 @@ def steepest_descent_analysis() :
         args = lpc('res/speech.wav', "voice", 'steepest_descent')
         end_t = time.time()
         Times_eps[i] = end_t - start_t
+
         Javg = args[5]
         Javg_eps[i] = Javg
+        Javg_eps /= Jmin
     plot_analysis(Javg_eps,Times_eps,eps_values,'eps',lambda_factor)
     pass
 
@@ -238,7 +242,7 @@ def plot_analysis(Javg,times,param,type,lambda_factor) :
     fig, ax = plt.subplots()
     plt.bar(range(len(Javg)),Javg)
     # Create x-axis labels with two rows
-    labels = [f'{x}\n{y}' for x, y in zip(param, times)]
+    labels = [f'{x}\n{y:.2f}' for x, y in zip(param, times)]
     ax.set_xticks(range(len(Javg)))
     ax.set_xticklabels(labels)
 
@@ -246,8 +250,8 @@ def plot_analysis(Javg,times,param,type,lambda_factor) :
     # Add axis labels and title
     if type == 'mu' : plt.xlabel('mu / time (s)')
     if type == 'eps' : plt.xlabel('epsilon / time (s)')
-    plt.ylabel(' Error average over frames')
-    plt.title('Error performance, lamda factor = '+lambda_factor)
+    plt.ylabel('Error average over frames')
+    plt.title('Error performance, lamda factor = '+str(lambda_factor))
 
     # Save the plot 
     if type == 'mu' : 
