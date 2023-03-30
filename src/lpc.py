@@ -4,6 +4,7 @@ import scipy.io.wavfile as wavfile
 from scipy.signal import lfilter
 import matplotlib.pyplot as plt
 import scipy as sp
+import time
 
 frame_size = 1*1024
 overlap_factor = 0.5
@@ -45,7 +46,7 @@ def compute_steepest_coefficents(frame ,R ,r, mu) :
         J_prev = J
         J = sigma - np.dot(np.conj(w),r) - np.dot(np.conj(r),w) + np.dot(np.conj(w),np.dot(R,w))
         delta_J = J_prev - J
-    return w , J
+    return w , J , eigs
 
 def compute_whitening_filter(lpc_coeffs):
     p_order = len(lpc_coeffs)
@@ -55,14 +56,6 @@ def compute_whitening_filter(lpc_coeffs):
     whitening_filter[1:] = -lpc_coeffs
 
     return whitening_filter
-
-""" def correlate(x,y,p_order):
-    autocorr = np.correlate(x, y, mode="full")[frame_size - 1:]
-    autocorr /= np.max(autocorr)
-    R = sp.linalg.toeplitz(autocorr[0:p_order])
-    r = autocorr[1:p_order+1]
-    return R , r 
- """
 
 def correlate(x, y, p_order):
     # Compute the autocorrelation
@@ -91,11 +84,13 @@ def lpc(filename, soundType, algorythm, mu = 0.5):
     windowed_frames = frames * window_function(frame_size)
     whitening_filter_coeffs = np.zeros( [len(frames) , p_order+1])
     J_list = np.zeros(len(frames))
+    lmd_factors = np.zeros(len(frames))
     for i , frame in enumerate(windowed_frames) : 
         if(i % 100 == 0) : print(i)
         R , r = correlate(frame,frame,p_order)
         if algorithm =='steepest_descent': 
-            lpc_coeffs, J = compute_steepest_coefficents(frame, R ,r , mu)
+            lpc_coeffs, J , eigs = compute_steepest_coefficents(frame, R ,r , mu)
+            lmd_factors[i] = max(abs(eigs))/min(abs(eigs))
         elif algorithm =='closed_form':
             lpc_coeffs = compute_closed_coefficents(frame, R ,r )
         else : 
@@ -103,31 +98,15 @@ def lpc(filename, soundType, algorythm, mu = 0.5):
         
         whitening_filter_coeffs[i] = compute_whitening_filter(lpc_coeffs)
         J_list[i] = J
-    # CONVERGENCE ANALYSIS
-    # if algorithm == 'steepest_descent' : 
-    #     # J_min = min(J)
-    #     # J_avg = np.mean(J)
 
+    # average over frames 
+    J_avg = 0
+    if algorithm == 'steepest_descent' : 
+        J_avg = np.mean(abs(J_list))
+        lmd_factor_avg = np.mean(lmd_factors)
 
+    return rate, data, lpc_coeffs, whitening_filter_coeffs, windowed_frames, J_avg , lmd_factor_avg
 
-    return rate, data, lpc_coeffs, whitening_filter_coeffs, windowed_frames
-
-def test():
-    # plot_window_and_cola(window_function, frame_size, overlap_factor)
-    # COLA CONDITION OK WITH THESE PARAMETERS
-    
-    # Compute LPC coefficients and whitening filter
-    rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano = lpc('res/piano.wav', "piano", algorithm)
-    rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech = lpc('res/speech.wav', "voice", algorithm)
-    
-
-    # Compute cross synthesis
-    filtered_signal = crossSynth(frames_piano, filter_coeffs_piano, filter_coeffs_speech, data_piano, frames_piano)
-    filtered_signal *= 2**15 - 1
-    # Write filtered signal to a new file
-    wavfile.write('output.wav', rate_piano, filtered_signal.astype(np.int16))
-    plt.plot(filtered_signal/abs(max(filtered_signal)))
-    plt.show()
 
 def crossSynth(harmonic_signal_framed, harmonic_whitening_framed, formant_whitening_framed, original_signal, original_signal_framed):
     step_size = int(frame_size * (1 - overlap_factor))
@@ -140,7 +119,6 @@ def crossSynth(harmonic_signal_framed, harmonic_whitening_framed, formant_whiten
         formant_whitening_fft = np.fft.fft(formant_whitening_framed[i], n=zp*frame_size)
         result[(i*step_size) : i*step_size+(zp*frame_size)] += np.fft.ifft(frame_fft*harmonic_whitening_fft/formant_whitening_fft).real
     return result
-
 
 def plot_window_and_cola(window_function, frame_size, overlap_factor):
     rate, data = read_wav('res/piano.wav')
@@ -201,10 +179,83 @@ def plot_frame_and_filter(frame, filter, filter_type, sample_rate):
     plt.show()
 
 
+def perform_lpc():
+    # plot_window_and_cola(window_function, frame_size, overlap_factor)
+    # COLA CONDITION OK WITH THESE PARAMETERS
+
+    # Compute LPC coefficients and whitening filter
+    rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano = lpc('res/piano.wav', "piano", algorithm)
+    rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech = lpc('res/speech.wav', "voice", algorithm)
+    
+    # Compute cross synthesis
+    filtered_signal = crossSynth(frames_piano, filter_coeffs_piano, filter_coeffs_speech, data_piano, frames_piano)
+    filtered_signal *= 2**15 - 1
+    # Write filtered signal to a new file
+    wavfile.write('output.wav', rate_piano, filtered_signal.astype(np.int16))
+
+def steepest_descent_analysis() : 
+
+    # Get the lambda factor 
+    args = lpc('res/speech.wav','voice', 'closed_form')
+    lambda_factor = args[6]
+
+    # Compute the theoretical average minimum error 
+    global epsilon 
+    epsilon = 10**-9
+    args  = lpc('res/speech.wav', "voice", 'steepest_descent')
+    Jmin = args[5]
+
+    # Results by varing mu_values 
+    mu_values = [0.1,0.25,0.5,0.75,0.9]
+    Javg_mu = np.zeros(len(mu_values))
+    Times_mu = np.zeros(len(mu_values))
+    for i,mu in enumerate(mu_values): 
+        start_t = time.time()
+        args = lpc('res/speech.wav', "voice", 'steepest_descent', mu)
+        end_t = time.time()
+        Times_mu[i] = end_t - start_t
+
+        Javg = args[5]
+        Javg_mu[i] = Javg
+    plot_analysis(Javg_mu,Times_mu,mu_values,'mu',lambda_factor)
+
+    # Results by varing epsilon 
+    eps_values = [10**-2,10**-4,10**-6,10**-8]
+    Javg_eps = np.zeros(len(eps_values))
+    Times_eps = np.zeros(len(eps_values))
+    for i,eps in enumerate(eps_values): 
+        epsilon = eps
+        start_t = time.time()
+        args = lpc('res/speech.wav', "voice", 'steepest_descent')
+        end_t = time.time()
+        Times_eps[i] = end_t - start_t
+        Javg = args[5]
+        Javg_eps[i] = Javg
+    plot_analysis(Javg_eps,Times_eps,eps_values,'eps',lambda_factor)
+    pass
+
+def plot_analysis(Javg,times,param,type,lambda_factor) : 
+    fig, ax = plt.subplots()
+    plt.bar(range(len(Javg)),Javg)
+    # Create x-axis labels with two rows
+    labels = [f'{x}\n{y}' for x, y in zip(param, times)]
+    ax.set_xticks(range(len(Javg)))
+    ax.set_xticklabels(labels)
+
+    
+    # Add axis labels and title
+    if type == 'mu' : plt.xlabel('mu / time (s)')
+    if type == 'eps' : plt.xlabel('epsilon / time (s)')
+    plt.ylabel(' Error average over frames')
+    plt.title('Error performance, lamda factor = '+lambda_factor)
+
+    # Show the plot
+    plt.show()
+
+
 
 if __name__ == '__main__' : 
-   sys.setrecursionlimit(100000)
-   test()
+   steepest_descent_analysis()
 
 
 
