@@ -9,11 +9,14 @@ import time
 frame_size = 1*1024
 overlap_factor = 0.5
 window_function = np.hanning
+check_cola=True
 lpc_order_piano=24
 lpc_order_voice=48
 algorithm = 'closed_form'
+# algorithm can be "closed_form" or "steepest_descent"
 mu = 0.8
 epsilon = 10**-2
+
 
 
 def read_wav(filename):
@@ -87,7 +90,7 @@ def lpc(filename, soundType, algorithm, mu = 0.5):
     J_list = np.zeros(len(frames))
     lmd_factors = np.zeros(len(frames))
     for i , frame in enumerate(windowed_frames) : 
-        if(i % 10 == 0) : print(i)
+        #if(i % 10 == 0) : print(i)
         R , r = correlate(frame,frame,p_order)
         if algorithm =='steepest_descent': 
             lpc_coeffs, J , eigs = compute_steepest_coefficents(frame, R ,r , mu)
@@ -183,10 +186,10 @@ def plot_frame_and_filter(frame, filter, filter_type, sample_rate):
 
 
 def perform_lpc():
-    # plot_window_and_cola(window_function, frame_size, overlap_factor)
-    # COLA CONDITION OK WITH THESE PARAMETERS
+    if(check_cola):
+        plot_window_and_cola(window_function, frame_size, overlap_factor)
 
-    # Compute LPC coefficients and whitening filter
+    # Compute LPC coefficients and whitening filters
     rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano, J_avg , lmd_factor_avg = lpc('res/piano.wav', "piano", algorithm, mu)
     rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech, J_avg , lmd_factor_avg  = lpc('res/speech.wav', "voice", algorithm, mu)
     
