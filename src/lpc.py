@@ -6,52 +6,68 @@ import matplotlib.pyplot as plt
 import scipy as sp
 import time
 
-frame_size = 1*1024
-overlap_factor = 0.5
-window_function = np.hanning
-check_cola=True
-lpc_order_piano=24
-lpc_order_voice=48
-algorithm = 'closed_form'
-# algorithm can be "closed_form" or "steepest_descent"
-mu = 0.8
-epsilon = 10**-2
+# Set constants and parameters
+frame_size = 1*1024  # Size of the audio frames in samples
+overlap_factor = 0.5  # Fraction of overlap between frames
+window_function = np.hanning  # Window function used to weight audio frames
+check_cola=True  # Check if constant overlap add (COLA) condition is satisfied
+lpc_order_piano=24  # LPC order for piano sound
+lpc_order_voice=48  # LPC order for voice sound
+algorithm = 'closed_form'  # Algorithm for LPC computation ('closed_form' or 'steepest_descent')
+mu = 0.8  # Steepest descent step size
+epsilon = 10**-3  # Steepest descent convergence threshold
 
-
-
+# Read an audio file and return the sample rate and data
 def read_wav(filename):
     rate, data = wavfile.read(filename)
+    # Use only one channel if stereo
     if len(data.shape) > 1:
-        data = data[:, 0]  # Use only one channel if stereo
+        data = data[:, 0]
+    # Normalize the data to have maximum absolute value of 1
     data = data/max(abs(data))
     return rate, data
 
+# Divide an audio signal into frames with specified size and overlap
 def divide_into_frames(signal, frame_size, overlap_factor):
+    # Compute the step size between frames
     step_size = int(frame_size * (1 - overlap_factor))
+    # Compute the number of frames needed to cover the signal
     num_frames = (len(signal) - frame_size) // step_size + 1
+    # Initialize an array to store the frames
     frames = np.zeros((num_frames, frame_size))
+    # Divide the signal into frames and store them in the array
     for i in range(num_frames):
         frames[i, :] = signal[i * step_size : i * step_size + frame_size]
     return frames
 
+# Compute the LPC coefficients for a frame using the closed-form solution
 def compute_closed_coefficents(frame, R, r):
     return np.linalg.solve(R, r)
 
-def compute_steepest_coefficents(frame ,R ,r, mu) : 
+# Compute the LPC coefficients for a frame using the steepest descent algorithm
+def compute_steepest_coefficents(frame ,R ,r, mu) :
+    # Compute the energy of the frame
     sigma = np.mean(np.sum(np.square(frame)))
+    # Initialize the weight vector and step size
     w = np.zeros(len(r))
     eigs = sp.linalg.eigvals(R)
-    dw = mu*2/abs(max(eigs))    
+    dw = mu*2/abs(max(eigs))
+    # Compute the objective function
     J = sigma - np.dot(np.conj(w),r) - np.dot(np.conj(r),w) + np.dot(np.conj(w),np.dot(R,w))
     delta_J = J
-    while(delta_J > epsilon / mu ) : 
-        grad = r - np.dot(R,w) 
+    # Update the weight vector until convergence
+    while(delta_J > epsilon / mu ) :
+        # Compute the gradient of the objective function
+        grad = r - np.dot(R,w)
+        # Update the weight vector
         w = w + dw*grad
+        # Compute the new objective function and check convergence
         J_prev = J
         J = sigma - np.dot(np.conj(w),r) - np.dot(np.conj(r),w) + np.dot(np.conj(w),np.dot(R,w))
         delta_J = J_prev - J
     return w , J , eigs
 
+# Compute the Whiteing filter coefficents
 def compute_whitening_filter(lpc_coeffs):
     p_order = len(lpc_coeffs)
     #the whitening fiter is 1 coefficient longer than the wiener (1 - (wiener coeff))
@@ -61,6 +77,7 @@ def compute_whitening_filter(lpc_coeffs):
 
     return whitening_filter
 
+# Compute the correlation vector and matrix between x , y and selects p_order coefficents 
 def correlate(x, y, p_order):
     # Compute the autocorrelation
     autocorr = np.correlate(x, y, mode="full")[len(x) - 1:]
@@ -76,26 +93,37 @@ def correlate(x, y, p_order):
     
     return R, r
 
-
+# Computes the wiener predition filter
+# algorithm : 'closed_form' -> closed form Wiener-Hops equation solution
+# algorithm : 'steepest_descent' -> iterative gradient based method
 def lpc(filename, soundType, algorithm, mu = 0.5):
+    # Set the order based on the signal type
     if soundType == 'piano' : 
         p_order = lpc_order_piano
     elif soundType == 'voice' : 
         p_order = lpc_order_voice
-
+    # Read audio
     rate, data = read_wav(filename)
+    # Framing and windowing
     frames = divide_into_frames(data, frame_size, overlap_factor)
     windowed_frames = frames * window_function(frame_size)
+    # Initialize an array with zeros to store whiteing coefficents
     whitening_filter_coeffs = np.zeros( [len(frames) , p_order+1])
+    # Initialize as array to store final error of the frames (steepest_descent)
     J_list = np.zeros(len(frames))
     lmd_factors = np.zeros(len(frames))
+    # Cycle over frames
     for i , frame in enumerate(windowed_frames) : 
-        #if(i % 10 == 0) : print(i)
+        if(i % 100 == 0) : print(i)
+        # Compute frame correlation
         R , r = correlate(frame,frame,p_order)
+
         if algorithm =='steepest_descent': 
+            # lpc coefficents , J Error , Rxx Eigenvalues
             lpc_coeffs, J , eigs = compute_steepest_coefficents(frame, R ,r , mu)
             J_list[i] = J
             lmd_factors[i] = max(abs(eigs))/min(abs(eigs))
+
         elif algorithm =='closed_form':
             lpc_coeffs = compute_closed_coefficents(frame, R ,r )
         else : 
@@ -103,8 +131,7 @@ def lpc(filename, soundType, algorithm, mu = 0.5):
         
         whitening_filter_coeffs[i] = compute_whitening_filter(lpc_coeffs)
 
-
-    # average over frames 
+    # Averaging error over frames 
     J_avg = 0
     lmd_factor_avg = 0
     if algorithm == 'steepest_descent' : 
@@ -113,36 +140,51 @@ def lpc(filename, soundType, algorithm, mu = 0.5):
 
     return rate, data, lpc_coeffs, whitening_filter_coeffs, windowed_frames, J_avg , lmd_factor_avg
 
-
+# Perform the cross synthesis between an Harmonic Signal and a Shaping signal 
+# In our case Harmonic -> piano.wav , Shaping -> speech.wav
+# The armonic Signal is whitened before shaping
 def crossSynth(harmonic_signal_framed, harmonic_whitening_framed, formant_whitening_framed, original_signal, original_signal_framed):
+    # Step to begin next frame into the result
     step_size = int(frame_size * (1 - overlap_factor))
-    #zero padding factor
+    # Perform Zero Padding of factor zp 
     zp = 4
+    # Initialize an array with zeros to store the filtered signal 
     result = np.zeros(len(original_signal)+zp*frame_size)
+    # Cycle over frames
     for i in range(harmonic_signal_framed.shape[0]):
+        # Transform in FFT
         frame_fft = np.fft.fft(harmonic_signal_framed[i], n=zp*frame_size)
         harmonic_whitening_fft = np.fft.fft(harmonic_whitening_framed[i], n=zp*frame_size)
         formant_whitening_fft = np.fft.fft(formant_whitening_framed[i], n=zp*frame_size)
+        # Filtering in FFT domain
         result[(i*step_size) : i*step_size+(zp*frame_size)] += np.fft.ifft(frame_fft*harmonic_whitening_fft/formant_whitening_fft).real
     return result
 
+# Check if the COLA condition is satisfied for a given window 
+# Plot the superimposition of the shifted windows to check if constant
 def plot_window_and_cola(window_function, frame_size, overlap_factor):
+    # Prepare the array where to superimpose the windows
     rate, data = read_wav('res/piano.wav')
     signal_length = len(data)
     step_size = int(frame_size * (1 - overlap_factor))
     #print(step_size)
     num_steps = (signal_length - frame_size) // step_size + 1
-    
+    # Get a numpy window
     window = window_function(frame_size)
+    # Initialize the array containg a shifted window
     shifted_window = np.zeros((signal_length))
+    # Initialize the array with the overall sum 
     cola_sum = np.zeros_like(shifted_window)
-
-    
+    # Cycle over the shifted windows
     for i in range(num_steps):
+        # Shift the window
         shifted_window[i * step_size : i * step_size + frame_size] = window
+        # add to the sum
         cola_sum += shifted_window
+        # Clear the window array
         shifted_window = np.zeros((signal_length))
 
+    # Plot the Results
     plt.figure(figsize=(12, 6))
     
     plt.subplot(1, 2, 1)
@@ -159,6 +201,8 @@ def plot_window_and_cola(window_function, frame_size, overlap_factor):
     
     plt.show()
 
+# Plot an audio frame next to a given filter 
+# default filter_type is a whiteing , use 'shaping' to get the reciprocal filter
 def plot_frame_and_filter(frame, filter, filter_type, sample_rate):
     # Calculate the FFT of the frame and the shaping filter
     frame_fft = np.fft.fft(frame)
@@ -184,11 +228,11 @@ def plot_frame_and_filter(frame, filter, filter_type, sample_rate):
     plt.legend()
     plt.show()
 
-
-def perform_lpc():
+# Check Cola, Perform LPC and CrossSynthesis
+def perform_CrossSynth():
+    # Check COLA Condition
     if(check_cola):
         plot_window_and_cola(window_function, frame_size, overlap_factor)
-
     # Compute LPC coefficients and whitening filters
     rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano, J_avg , lmd_factor_avg = lpc('res/piano.wav', "piano", algorithm, mu)
     rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech, J_avg , lmd_factor_avg  = lpc('res/speech.wav', "voice", algorithm, mu)
@@ -199,17 +243,17 @@ def perform_lpc():
     # Write filtered signal to a new file
     wavfile.write('output.wav', rate_piano, filtered_signal.astype(np.int16))
 
+# Analyze Error by varing mu, epsilon in Steepest Descent algorithm
 def steepest_descent_analysis() :  
-
-
     # Compute the theoretical average minimum error 
     global epsilon 
     epsilon = 10**-7
     # args  = lpc('res/speech.wav', "voice", 'steepest_descent')
     # Jmin = args[5]
-    Jmin = 0.010022139713234417 # mu = 0.5, eps = 10e-7
+    Jmin = 0.010022139713234417 # evaluated for mu = 0.5, eps = 10e-7
     #lambda_factor = args[6]
     epsilon = 10**-5
+
     # Results by varing mu_values 
     mu_values = [0.25,0.3,0.5,0.75,0.9]
     Javg_mu = np.zeros(len(mu_values))
@@ -250,14 +294,10 @@ def plot_analysis(Javg,times,param,type) :
     labels = [f'{x}\n{y:.2f}' for x, y in zip(param, times)]
     ax.set_xticks(range(len(Javg)))
     ax.set_xticklabels(labels)
-
-    
     # Add axis labels and title
     if type == 'mu' : plt.xlabel('mu / time (s)')
     if type == 'eps' : plt.xlabel('epsilon / time (s)')
     plt.ylabel('J(w)/Jmin avg over frames ')
-    
-
     # Save the plot 
     if type == 'mu' :
         plt.title('Error over mu (eps = 10e-5)')
@@ -271,9 +311,8 @@ def plot_analysis(Javg,times,param,type) :
     plt.show()
 
 
-
 if __name__ == '__main__' : 
-   perform_lpc()
+   perform_CrossSynth()
 
 
 
