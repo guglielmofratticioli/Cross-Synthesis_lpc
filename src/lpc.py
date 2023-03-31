@@ -207,7 +207,7 @@ def steepest_descent_analysis() :
     Jmin = args[5]
     epsilon = 10**-5
     # Results by varing mu_values 
-    mu_values = [0.1,0.25,0.5,0.75,0.9]
+    mu_values = [0.25,0.3,0.5,0.75,0.9]
     Javg_mu = np.zeros(len(mu_values))
     Times_mu = np.zeros(len(mu_values))
     for i,mu in enumerate(mu_values): 
@@ -240,7 +240,7 @@ def steepest_descent_analysis() :
 
 def plot_analysis(Javg,times,param,type,lambda_factor) : 
     fig, ax = plt.subplots()
-    plt.bar(range(len(Javg)),Javg)
+    plt.semilogy(range(len(Javg)),Javg)
     # Create x-axis labels with two rows
     labels = [f'{x}\n{y:.2f}' for x, y in zip(param, times)]
     ax.set_xticks(range(len(Javg)))
