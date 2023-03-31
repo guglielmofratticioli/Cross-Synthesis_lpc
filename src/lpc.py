@@ -11,7 +11,9 @@ overlap_factor = 0.5
 window_function = np.hanning
 lpc_order_piano=24
 lpc_order_voice=48
-epsilon = 10**-6
+algorithm = 'closed_form'
+mu = 0.8
+epsilon = 10**-2
 
 
 def read_wav(filename):
@@ -185,8 +187,8 @@ def perform_lpc():
     # COLA CONDITION OK WITH THESE PARAMETERS
 
     # Compute LPC coefficients and whitening filter
-    rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano = lpc('res/piano.wav', "piano", algorithm)
-    rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech = lpc('res/speech.wav', "voice", algorithm)
+    rate_piano, data_piano, lpc_coeffs_piano, filter_coeffs_piano, frames_piano, J_avg , lmd_factor_avg = lpc('res/piano.wav', "piano", algorithm, mu)
+    rate_speech, data_speech, lpc_coeffs_speech, filter_coeffs_speech, frames_speech, J_avg , lmd_factor_avg  = lpc('res/speech.wav', "voice", algorithm, mu)
     
     # Compute cross synthesis
     filtered_signal = crossSynth(frames_piano, filter_coeffs_piano, filter_coeffs_speech, data_piano, frames_piano)
@@ -268,7 +270,7 @@ def plot_analysis(Javg,times,param,type) :
 
 
 if __name__ == '__main__' : 
-   steepest_descent_analysis()
+   perform_lpc()
 
 
 
