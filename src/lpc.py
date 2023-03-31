@@ -13,7 +13,7 @@ window_function = np.hanning  # Window function used to weight audio frames
 check_cola=True  # Check if constant overlap add (COLA) condition is satisfied
 lpc_order_piano=24  # LPC order for piano sound
 lpc_order_voice=48  # LPC order for voice sound
-algorithm = 'closed_form'  # Algorithm for LPC computation ('closed_form' or 'steepest_descent')
+algorithm = 'steepest_descent'  # Algorithm for LPC computation ('closed_form' or 'steepest_descent')
 mu = 0.8  # Steepest descent step size
 epsilon = 10**-3  # Steepest descent convergence threshold
 
