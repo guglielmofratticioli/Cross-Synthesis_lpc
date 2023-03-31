@@ -1,39 +1,32 @@
 # LPC-based cross synthesis
 
-The code implements a vocoder through cross synthesis.
-The coefficients for the filters are computed in two different ways:
-- Solving Wiener-Hopf equations
-- Using Steepest Descent algorithm
+This code implements a vocoder through cross-synthesis. LPC coefficients are computed in two ways: solving Wiener-Hopf equations and using the Steepest Descent algorithm.
 
 ## Getting Started
+To use this code, run the `lpc.py` script. The `res` folder should contain `piano.wav` and `speech.wav`.
 
-To use this code, simply run the script `lpc.py`.
+## Code Overview
+The main function is `perform_lpc()`. 
+- `Hanning` window and `overlap_factor = 0.5` are used for overlap and add.
+- Global parameters can be changed to alter the script's behavior.
+- Signal is divided into frames, windowed, and analyzed individually.
+- LPC coefficients are computed, and whitening filter coefficients are obtained.
+- Convolution is done through multiplication in frequency domain.
+- Zero padding is overdone for artifact avoidance.
+- The inverse FFTs are summed and written as `output.wav`.
+- Data is normalized to prevent overflow errors in the Steepest Descent algorithm.
 
-In the `res` folder should be located `piano.wav` and `speech.wav`
+## Steepest Descent Analysis
+The steepest descent is an iterative algorithm with two main parameters: 
+- `mu`: step size to update the weights in the gradient direction
+- `epsilon`: the smallest error reduction below which the algorithm is considered stationary and is stopped 
 
-## Functions and implementation
+The `steepest_descent_analysis()` function performs this algorithm with varying `mu` and `epsilon` and evaluates the average error `J` (over all audio frames) reached at the final step. Results are shown in the following plots:
 
-The function `perform_lpc()` is the main function of this script.
-
-For Overlap and Add we chose `Hanning` window and `overlap_factor = 0.5`
-
-Changing the global parameters is possible to change the behaviour of the script.
-The given values are the one we found as optimal for quality and speed of the algorithms.
-
-No high-level functions have been used.
-The signal is divided in frames and windowed at the beginning of the process.
-Each frame is analyzed individually. 
-Through the chosen algorithm, LPC coefficients are computed and with that, the relative whitening filters coefficients.
-
-The convolution is done through moltiplicatin in frequency domain.
-
-The zero padding is not calculated through the formula but overdone. Zero-padding to obtain the length of `frame_length`+`filter1_legth`+`filter2_length` wasn't sufficient to avoid artifacts.
-
-To obtain the shaper filter from the voice we computed `1/whitening` in frequency domain.
-
-The inverse ffts are then summed back and written as wav file with the name of `output.wav`
-
-Before all the process, the data is normalized to avoid overflow errors in the Steepest Descent algorithm
+| | 
+|--|
+|<div style="margin:5%"> ![eps_plot](eps_plot.png) </div>
+| <div style="margin:5%"> ![mu_plot](mu_plot.png) </div> |
 
 ## Group
 - Guglielmo Fratticioli
