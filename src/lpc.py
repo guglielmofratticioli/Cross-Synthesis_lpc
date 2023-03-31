@@ -59,7 +59,7 @@ def compute_whitening_filter(lpc_coeffs):
 def correlate(x, y, p_order):
     # Compute the autocorrelation
     autocorr = np.correlate(x, y, mode="full")[len(x) - 1:]
-    #autocorr /= np.max(autocorr)
+    # autocorr /= np.max(autocorr)
 
     # Compute the correlation matrix R and vector r
     R = np.zeros((p_order, p_order))
@@ -68,7 +68,7 @@ def correlate(x, y, p_order):
         for j in range(p_order):
             R[i,j] = autocorr[np.abs(i-j)]
         r[i] = autocorr[i+1]
-
+    
     return R, r
 
 
@@ -200,9 +200,10 @@ def steepest_descent_analysis() :
     # Compute the theoretical average minimum error 
     global epsilon 
     epsilon = 10**-7
-    args  = lpc('res/speech.wav', "voice", 'steepest_descent')
-    Jmin = args[5]
-    lambda_factor = args[6]
+    # args  = lpc('res/speech.wav', "voice", 'steepest_descent')
+    # Jmin = args[5]
+    Jmin = 0.010022139713234417 # mu = 0.5, eps = 10e-7
+    #lambda_factor = args[6]
     epsilon = 10**-5
     # Results by varing mu_values 
     mu_values = [0.25,0.3,0.5,0.75,0.9]
@@ -217,7 +218,7 @@ def steepest_descent_analysis() :
         Javg = args[5]
         Javg_mu[i] = Javg
         Javg_mu /= Jmin
-    plot_analysis(Javg_mu,Times_mu,mu_values,'mu',lambda_factor)
+    plot_analysis(Javg_mu,Times_mu,mu_values,'mu')
 
     # Results by varing epsilon 
     eps_values = [10**-2,10**-4,10**-5,10**-6]
@@ -233,10 +234,10 @@ def steepest_descent_analysis() :
         Javg = args[5]
         Javg_eps[i] = Javg
         Javg_eps /= Jmin
-    plot_analysis(Javg_eps,Times_eps,eps_values,'eps',lambda_factor)
+    plot_analysis(Javg_eps,Times_eps,eps_values,'eps')
     pass
 
-def plot_analysis(Javg,times,param,type,lambda_factor) : 
+def plot_analysis(Javg,times,param,type) : 
     fig, ax = plt.subplots()
     plt.bar(range(len(Javg)),Javg)
     plt.yscale('log')
@@ -254,11 +255,11 @@ def plot_analysis(Javg,times,param,type,lambda_factor) :
 
     # Save the plot 
     if type == 'mu' :
-        plt.title('Error over mu (eps = 10e-5, lamda factor = '+str(lambda_factor)+')') 
+        plt.title('Error over mu (eps = 10e-5)')
         plt.xlabel('mu / time (s)') 
         plt.savefig('mu_plot.pdf', dpi = 300)
     if type == 'eps' : 
-        plt.title('Error over epsilon (mu = 0.5, lamda factor = '+str(lambda_factor)+')')
+        plt.title('Error over epsilon (mu = 0.5)')
         plt.xlabel('eps / time (s)') 
         plt.savefig('eps_plot.pdf', dpi = 300)
     # Show the plot
