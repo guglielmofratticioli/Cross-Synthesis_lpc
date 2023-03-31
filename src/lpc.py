@@ -196,15 +196,13 @@ def perform_lpc():
 
 def steepest_descent_analysis() :  
 
-    # Get the lambda factor 
-    args = lpc('res/speech.wav','voice', 'closed_form')
-    lambda_factor = args[6]
 
     # Compute the theoretical average minimum error 
     global epsilon 
     epsilon = 10**-7
     args  = lpc('res/speech.wav', "voice", 'steepest_descent')
     Jmin = args[5]
+    lambda_factor = args[6]
     epsilon = 10**-5
     # Results by varing mu_values 
     mu_values = [0.25,0.3,0.5,0.75,0.9]
@@ -240,7 +238,8 @@ def steepest_descent_analysis() :
 
 def plot_analysis(Javg,times,param,type,lambda_factor) : 
     fig, ax = plt.subplots()
-    plt.semilogy(range(len(Javg)),Javg)
+    plt.bar(range(len(Javg)),Javg)
+    plt.yscale('log')
     # Create x-axis labels with two rows
     labels = [f'{x}\n{y:.2f}' for x, y in zip(param, times)]
     ax.set_xticks(range(len(Javg)))
@@ -250,14 +249,16 @@ def plot_analysis(Javg,times,param,type,lambda_factor) :
     # Add axis labels and title
     if type == 'mu' : plt.xlabel('mu / time (s)')
     if type == 'eps' : plt.xlabel('epsilon / time (s)')
-    plt.ylabel('Error average over frames')
-    plt.title('Error performance, lamda factor = '+str(lambda_factor))
+    plt.ylabel('J(w)/Jmin avg over frames ')
+    
 
     # Save the plot 
-    if type == 'mu' : 
+    if type == 'mu' :
+        plt.title('Error over mu (eps = 10e-5, lamda factor = '+str(lambda_factor)+')') 
         plt.xlabel('mu / time (s)') 
         plt.savefig('mu_plot.pdf', dpi = 300)
     if type == 'eps' : 
+        plt.title('Error over epsilon (mu = 0.5, lamda factor = '+str(lambda_factor)+')')
         plt.xlabel('eps / time (s)') 
         plt.savefig('eps_plot.pdf', dpi = 300)
     # Show the plot
